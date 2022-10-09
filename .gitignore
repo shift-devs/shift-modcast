@@ -1,7 +1,7 @@
 # Custom
 **/build/
 **/package-lock.json
-docker/configs/modcast-twitch-bot
+docker/twitch-bot/configs/modcast-twitch-bot
 
 # Logs
 logs

@@ -1,6 +1,6 @@
 {
   "name": "modcast-twitch-bot",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "A Twitch Bot integration for Shift modcasts.",
   "main": "build/src/index.js",
   "dependencies": {
