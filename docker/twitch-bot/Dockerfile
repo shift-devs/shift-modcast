@@ -2,35 +2,39 @@ FROM archlinux
 
 # ARGS
 ARG USER
-ENV USER="twitch"
+ENV USER="modcast"
 
-ARG OBS_HOME
-ENV OBS_HOME="/opt/obs"
+ARG MOD_HOME
+ENV MOD_HOME="/opt/modcast"
+
+ENV MOD_ENV="/etc/modcast"
+ENV MOD_BIN="/usr/bin/modcast-twitch-bot"
 
 # Install dependencies
 RUN pacman -Syyuu --quiet --noconfirm
-RUN pacman -S xorg-server xorg-xinit lightdm lightdm-gtk-greeter x11vnc xf86-video-dummy python obs-studio --quiet --noconfirm
+# RUN pacman -S vim --noconfirm
 
-# Create the OBS User
-COPY configs/obs.conf /usr/lib/sysusers.d
+# Create the Modcast User
+COPY configs/modcast.conf /usr/lib/sysusers.d
 RUN systemd-sysusers
-RUN mkdir -p ${OBS_HOME}
+RUN mkdir -p ${MOD_HOME}
 
-# Install X server configs
-COPY configs/10-headless.conf /etc/X11/xorg.conf.d/10-headless.conf
-COPY configs/lightdm.conf /etc/lightdm/lightdm.conf
-
-# Install OBS Configs and Profile
-COPY ./configs/ShiftStream.json ${OBS_HOME}/.config/obs-studio/basic/scenes/modcast.json
-COPY ./modcast-profile ${OBS_HOME}/.config/obs-studio/basic/profiles/modcast
+# Install Modcast Configs and Executable
+RUN mkdir -p ${MOD_ENV}
+COPY ./configs/modcast.json ${MOD_ENV}
+COPY ./configs/modcast-twitch-bot ${MOD_BIN}
 
 # Fix permissions and ownership
-RUN chown -R ${USER}:${USER} ${OBS_HOME}
-RUN chmod -R 700 ${OBS_HOME}
+RUN chown -R root:root ${MOD_ENV}
+RUN chmod -R 755 ${MOD_ENV}
+RUN chmod -R 644 ${MOD_ENV}/*
+RUN chown -R root:root ${MOD_BIN}
+RUN chmod -R 755 ${MOD_BIN}
+
+# Expose ports
+EXPOSE 4455
 
 # Entrypoint
-#USER ${USER}
-#RUN Xorg 
-#CMD ["/usr/bin/bash"]
-#ENTRYPOINT ["x11vnc", "-display", ":0", "-auth", "/var/run/lightdm/root/\:0"]
-ENTRYPOINT ["startx"]
+USER ${USER}
+# CMD ["/usr/bin/bash"]
+ENTRYPOINT ["modcast-twitch-bot", "-oh", "10.0.0.4"]
