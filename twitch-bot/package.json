@@ -1,0 +1,11 @@
+{
+  "name": "modcast-twitch-bot",
+  "version": "0.0.1",
+  "description": "A Twitch Bot integration for Shift modcasts.",
+  "main": "src/index.js",
+  "dependencies": {
+    "obs-websocket-js": "^5.0.2",
+    "tmi.js": "^1.8.5",
+    "twitch-m3u8": "^1.1.5"
+  }
+}
