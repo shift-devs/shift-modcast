@@ -2,10 +2,20 @@
   "name": "modcast-twitch-bot",
   "version": "0.0.1",
   "description": "A Twitch Bot integration for Shift modcasts.",
+  "type": "module",
   "main": "src/index.js",
   "dependencies": {
+    "argparse": "^2.0.1",
     "obs-websocket-js": "^5.0.2",
     "tmi.js": "^1.8.5",
     "twitch-m3u8": "^1.1.5"
+  },
+  "scripts": {
+    "clean": "rm -rf build node_modules package-lock.json",
+    "dev": "tsc-watch --onCompilationStarted 'npm install' --onSuccess 'npm start'",
+    "start": "node build/index.js"
+  },
+  "bin": {
+    "execute": "src/index.js"
   }
 }
