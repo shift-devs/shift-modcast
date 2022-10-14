@@ -1,24 +1,77 @@
-import OBSWebSocket from 'obs-websocket-js'
+import OBSWebSocket, { OBSWebSocketError, EventSubscription } from 'obs-websocket-js'
 import { logger } from '.'
 import { getTwitchHlsStream } from './twitch'
+import { Lock } from "async-await-mutex-lock"
 
 export class ObsWSClient extends OBSWebSocket {
     private address: string
+    private challenge: string
     private prefix: string
+    private connectionPending: Lock<string>
+    private waitForReconnect: number
 
-    constructor(host: string, port: Number, challenge: string = '', prefix: string = '!obs') {
+    constructor(host: string, port: Number, challenge: string = '', prefix: string = '!obs', waitForReconnect: number = 3000) {
         super()
         this.address = `ws://${host}:${port}`
+        this.challenge = challenge
         this.prefix = prefix
+        this.connectionPending = new Lock()
+        this.waitForReconnect = waitForReconnect
 
-        this.connect(this.address, challenge, {
-            rpcVersion: 1
-        }).then(() => {
-            logger.info(`Connected to OBS -> ${this.address}`)
-        })
-        .catch((e) => {
-            logger.error(e)
-        })
+        this.addListener('ConnectionOpened', this.handleOnOpen)
+        this.addListener('ExitStarted', this.handleExitStarted)
+        this.safeConnect()
+            .then((isConnnected: boolean) => {
+                if(!isConnnected) {
+                    this.attemptReconnect()
+                }
+            })
+    }
+
+    private async msleep(timeMS: number) {
+        await Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, timeMS);
+    }
+
+    private async safeConnect() : Promise<boolean> {
+        var isConnected
+        await this.connectionPending.acquire()
+        const acquired = this.connectionPending.isAcquired()
+
+        if(!acquired) {
+            logger.error('Connection attempt already started! Exiting this event!')
+            return null
+        }
+
+        try {
+            logger.info(`Attempting to connect to ${this.address}...`)
+            const res = await this.connect(this.address, this.challenge, { eventSubscriptions: EventSubscription.All, rpcVersion: 1 })
+            logger.info(`Established connection to OBS with RPC version: ${res.rpcVersion} and WS Version: ${res.obsWebSocketVersion}!`)
+            isConnected = true
+        } catch(error) {
+            logger.error(`Failed to connect to websocket: ${error}`)
+            isConnected = false
+        } finally {
+            this.connectionPending.release()
+            return isConnected
+        }
+    }
+
+    private async handleOnOpen() {}
+
+    private async attemptReconnect() {
+        while(true) {
+            logger.warn(`Failed to reach websocket! Waiting for ${this.waitForReconnect}s before trying again...`)
+            await this.msleep(this.waitForReconnect).catch(e => logger.error)
+            if(await this.safeConnect().catch(e => logger.error)) {
+                break
+            }
+        }
+    }
+
+    private async handleExitStarted() {
+        this.disconnect()
+        logger.warn(`Session at ${this.address} gracefully closed!`)
+        this.attemptReconnect()
     }
 
     private handleSetStreamCommand(instance: ObsWSClient, username: string, args) {
@@ -29,12 +82,13 @@ export class ObsWSClient extends OBSWebSocket {
 
         const index = Number.parseInt(args[2])
         if(args.length == 3) {
-            logger.info(`Setting stream_${index} to https://duckduckgo.com/`)
-            instance.setStream(index, 'https://duckduckgo.com/')
+            const nullStream = ''
+            logger.info(`Setting stream_${index} to ${nullStream}`)
+            instance.setStream(index, nullStream)
                 .then(res => logger.info)
                 .catch(e => logger.error)
         } else {
-            const channel = args[3]
+            const channel = args[3].toLowerCase()
             getTwitchHlsStream(channel)
                 .then((url: string) => {
                     logger.info(`Setting stream_${index} to https://twitch.tv/${channel}`)
