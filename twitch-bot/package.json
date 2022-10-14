@@ -8,10 +8,12 @@
     "jsonfile": "^6.1.0",
     "logging": "3.3.0",
     "obs-websocket-js": "^5.0.2",
+    "async-await-mutex-lock": "^1.0.10",
     "tmi.js": "^1.8.5",
     "twitch-m3u8": "^1.1.5"
   },
   "scripts": {
+    "start": "node build/src/index.js",
     "clean": "rm -rf build node_modules package-lock.json",
     "dev": "tsc-watch --onCompilationStarted 'npm install' --onSuccess 'npm start'",
     "package": "mkdir -p ../docker/twitch-bot/configs && npm install && tsc && pkg --out-path ../docker/twitch-bot/configs --targets linux --compress gzip ."
