@@ -8,6 +8,7 @@ export class ObsWSClient extends OBSWebSocket {
     private challenge: string
     private prefix: string
     private connectionPending: Lock<string>
+    private isConnected: boolean
     private waitForReconnect: number
 
     constructor(host: string, port: Number, challenge: string = '', prefix: string = '!obs', waitForReconnect: number = 3000) {
@@ -33,7 +34,6 @@ export class ObsWSClient extends OBSWebSocket {
     }
 
     private async safeConnect() : Promise<boolean> {
-        var isConnected
         await this.connectionPending.acquire()
         const acquired = this.connectionPending.isAcquired()
 
@@ -46,13 +46,13 @@ export class ObsWSClient extends OBSWebSocket {
             logger.info(`Attempting to connect to ${this.address}...`)
             const res = await this.connect(this.address, this.challenge, { eventSubscriptions: EventSubscription.All, rpcVersion: 1 })
             logger.info(`Established connection to OBS with RPC version: ${res.rpcVersion} and WS Version: ${res.obsWebSocketVersion}!`)
-            isConnected = true
+            this.isConnected = true
         } catch(error) {
             logger.error(`Failed to connect to websocket: ${error}`)
-            isConnected = false
+            this.isConnected = false
         } finally {
             this.connectionPending.release()
-            return isConnected
+            return this.isConnected
         }
     }
 
@@ -83,8 +83,9 @@ export class ObsWSClient extends OBSWebSocket {
         const index = Number.parseInt(args[2])
         if(args.length == 3) {
             const nullStream = ''
-            logger.info(`Setting stream_${index} to ${nullStream}`)
-            instance.setStream(index, nullStream)
+            logger.info(`Un-setting stream_${index}!`)
+            instance.setVisibility(index, false)
+            instance.setStream(index)
                 .then(res => logger.info)
                 .catch(e => logger.error)
         } else {
@@ -92,9 +93,16 @@ export class ObsWSClient extends OBSWebSocket {
             getTwitchHlsStream(channel)
                 .then((url: string) => {
                     logger.info(`Setting stream_${index} to https://twitch.tv/${channel}`)
-                    instance.setStream(index, url)
-                        .then(res => logger.info)
-                        .catch(e => logger.error)
+
+                    instance.setCountdown(index, channel)
+                        .then(() => {
+                            instance.setStream(index, url)
+                                .then(() => {
+                                    instance.setVisibility(index, true)
+                                })
+                                .catch(e => logger.error)
+                        })
+
                 })
                 .catch(e => logger.error)
         }
@@ -146,11 +154,10 @@ export class ObsWSClient extends OBSWebSocket {
         }
     }
 
-    private async setStream(streamIndex: number, url: string) {
-        const inputName = `stream_${streamIndex}`
-        logger.info(`Setting ${inputName} to remote stream: ${url}`)
+    private async setStream(streamIndex: number, url: string = '') {
+        const name = `stream_${streamIndex}`
         return await this.call('SetInputSettings', {
-            inputName: inputName,
+            inputName: name,
             inputSettings: {
                 input: url
             }
@@ -163,6 +170,97 @@ export class ObsWSClient extends OBSWebSocket {
         return await this.call('SetInputVolume', {
             inputName: inputName,
             inputVolumeMul: level
+        })
+    }
+
+    private async setVisibility(index: number, enabled: boolean) {
+        const name = `stream_${index}`
+        const scene = (await this.call('GetCurrentProgramScene')).currentProgramSceneName
+        const id = (await this.call('GetSceneItemId', {sceneName: scene, sourceName: name})).sceneItemId
+
+        await this.call('SetSceneItemEnabled', {
+            sceneName: scene,
+            sceneItemId: id,
+            sceneItemEnabled: enabled
+        })
+    }
+
+    private async setCountdown(index: number, channel: string, delay: number = 3) {
+        const name = `countdown_${index}`
+        const scene = (await this.call('GetCurrentProgramScene')).currentProgramSceneName
+        const kind = (await this.call('GetInputKindList')).inputKinds.filter(i => i.match('text_.*'))[0]
+        const videoSettings = await this.call('GetVideoSettings')
+
+        await this.call('CreateInput', {
+            sceneName: scene,
+            inputName: name,
+            inputKind: kind
+        })
+        const id = (await this.call('GetSceneItemId', {sceneName: scene, sourceName: name})).sceneItemId
+
+
+        await this.call('SetInputSettings', {
+            inputName: name,
+            inputSettings: {
+                font: {
+                    size: 32
+                }
+            }
+        })
+
+        var x: number
+        var y: number
+        switch(index) {
+            case 0: {
+                x = videoSettings.baseWidth / 2
+                y = videoSettings.baseHeight / 2
+                break
+            }
+            case 1: {
+                x = videoSettings.baseWidth / 4
+                y = videoSettings.baseHeight / 4
+                break
+            }
+            case 2: {
+                x = 3 * videoSettings.baseWidth / 4
+                y = videoSettings.baseHeight / 4
+                break
+            }
+            case 3: {
+                x = videoSettings.baseWidth / 4
+                y = 3* videoSettings.baseHeight / 4
+                break
+            }
+            case 4: {
+                x = 3 * videoSettings.baseWidth / 4
+                y = 3 * videoSettings.baseHeight / 4
+                break
+            }
+        }
+
+        await this.call('SetSceneItemTransform', {
+            sceneName: scene,
+            sceneItemId: id,
+            sceneItemTransform: {
+                positionX: x,
+                positionY: y,
+                alignment: 0
+            }
+        })
+
+        for(var i = delay; i > 0; i--) {
+            await this.call('SetInputSettings', {
+                inputName: name,
+                inputSettings: {
+                    text: `Adding ${channel} as stream #${index} in ${i}s...`
+                }
+            })
+
+            await this.msleep(1000)
+        }
+
+        await this.call('RemoveInput', {
+            inputName: name
         })
     }
 }
