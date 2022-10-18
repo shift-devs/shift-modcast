@@ -80,7 +80,12 @@ export class ObsWSClient extends OBSWebSocket {
             return
         }
 
-        const index = Number.parseInt(args[2])
+        const index = Number.parseInt(args[2],10)
+        if (!Number.isFinite(index) || index > 4 || index < 0) {
+            logger.warn(`[MALFORMED ARGS][${username}]: ${args}`)
+            return;
+        }
+        
         if(args.length == 3) {
             const nullStream = ''
             logger.info(`Un-setting stream_${index}!`)
@@ -114,8 +119,15 @@ export class ObsWSClient extends OBSWebSocket {
             return
         }
 
-        const index = Number.parseInt(args[2])
-        const level = Number.parseFloat(args[3])
+        const index = Number.parseInt(args[2],10)
+        var level = Number.parseFloat(args[3])
+        
+        if (!Number.isFinite(index) || !Number.isFinite(level) || index > 4 || index < 0){
+            logger.warn(`[MALFORMED ARGS][${username}]: ${args}`)
+            return
+        }
+        
+        level = level < 0 ? 0 : level > 20 ? 20 : level
 
         instance.setVolume(index, level)
             .then(res => logger.info)
